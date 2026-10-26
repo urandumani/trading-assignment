@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TradeSim.Api/TradeSim.Api.csproj" />
+    <Project Path="src/TradeSim.Application/TradeSim.Application.csproj" />
+    <Project Path="src/TradeSim.Domain/TradeSim.Domain.csproj" />
+    <Project Path="src/TradeSim.Infrastructure/TradeSim.Infrastructure.csproj" />
+    <Project Path="src/TradeSim.Worker/TradeSim.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TradeSim.IntegrationTests/TradeSim.IntegrationTests.csproj" />
+    <Project Path="tests/TradeSim.UnitTests/TradeSim.UnitTests.csproj" />
+  </Folder>
+</Solution>

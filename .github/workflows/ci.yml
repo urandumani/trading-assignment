@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore TradeSim.slnx
+
+      - name: Build
+        run: dotnet build TradeSim.slnx --no-restore --configuration Release
+
+      - name: Unit tests
+        run: dotnet test tests/TradeSim.UnitTests --no-build --configuration Release
+
+      - name: Integration tests
+        run: dotnet test tests/TradeSim.IntegrationTests --no-build --configuration Release
+
+  docker-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the api and worker images
+        run: docker compose build

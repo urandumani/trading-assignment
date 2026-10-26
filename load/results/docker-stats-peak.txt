@@ -1,0 +1,10 @@
+NAME                           CPU %     MEM USAGE / LIMIT
+tradesim-k6-run-9692869750b4   118.86%   1.5GiB / 1.5GiB
+tradesim-api-2                 218.28%   247.1MiB / 384MiB
+tradesim-api-1                 222.66%   242.9MiB / 384MiB
+tradesim-worker-1              77.75%    131.5MiB / 384MiB
+tradesim-nginx-1               32.94%    11.95MiB / 32MiB
+tradesim-postgres-1            415.86%   399.6MiB / 512MiB
+tradesim-rabbitmq-1            24.35%    102.2MiB / 512MiB
+tradesim-redis-1               11.69%    5.945MiB / 128MiB
+tradesim-aspire-dashboard-1    104.66%   244MiB / 256MiB

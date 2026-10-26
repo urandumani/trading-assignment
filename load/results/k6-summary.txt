@@ -1,0 +1,44 @@
+ Container tradesim-k6-run-9692869750b4 Creating 
+ Container tradesim-k6-run-9692869750b4 Created 
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+     execution: local
+        script: /scripts/load-test.js
+        output: -
+     scenarios: (100.00%) 1 scenario, 1000 max VUs, 6m40s max duration (incl. graceful stop):
+              * traders: Up to 1000 looping VUs for 6m30s over 3 stages (gracefulRampDown: 10s, gracefulStop: 30s)
+traders ↓ [ 100% ] 0017/1000 VUs  6m30s
+traders ✓ [ 100% ] 0000/1000 VUs  6m30s
+  █ THRESHOLDS 
+    checks
+    ✓ 'rate>0.99' rate=100.00%
+    http_req_duration{kind:order}
+    ✓ 'p(95)<500' p(95)=163.2ms
+    http_req_duration{kind:read}
+    ✓ 'p(95)<200' p(95)=72.59ms
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+  █ TOTAL RESULTS 
+    checks_total.......: 350888  834.862803/s
+    checks_succeeded...: 100.00% 350888 out of 350888
+    checks_failed......: 0.00%   0 out of 350888
+    ✓ status is 2xx
+    HTTP
+    http_req_duration..............: avg=26.6ms  med=13.87ms p(90)=61.82ms  p(95)=94.18ms p(99)=187.51ms max=1.22s
+      { expected_response:true }...: avg=26.6ms  med=13.87ms p(90)=61.82ms  p(95)=94.18ms p(99)=187.51ms max=1.22s
+      { kind:order }...............: avg=57.05ms med=37.3ms  p(90)=118.77ms p(95)=163.2ms p(99)=285.11ms max=1.14s
+      { kind:read }................: avg=20.98ms med=11.13ms p(90)=47.8ms   p(95)=72.59ms p(99)=148.25ms max=1.22s
+    http_req_failed................: 0.00%  0 out of 351888
+    http_reqs......................: 351888 837.242088/s
+    EXECUTION
+    iteration_duration.............: avg=1.03s   med=1.01s   p(90)=1.07s    p(95)=1.11s   p(99)=1.27s    max=2.86s
+    iterations.....................: 333954 794.571979/s
+    vus............................: 6      min=0           max=1000
+    vus_max........................: 1000   min=1000        max=1000
+    NETWORK
+    data_received..................: 865 MB 2.1 MB/s
+    data_sent......................: 191 MB 455 kB/s
+traders ✓ [ 100% ] 0000/1000 VUs  6m30s

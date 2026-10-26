@@ -1,0 +1,1585 @@
+{
+  "info": {
+    "name": "TradeSim API",
+    "description": "Stock trading simulation API. Run the folders in order (Runner or Newman).\n\nThe collection logs in automatically (collection pre-request script) as {{username}} and keeps the JWT, userId and accountId in collection variables.\n\nThe Orders folder needs the market to be open (09:30–16:00 CEST, weekdays) — or start the stack with MARKET_ALWAYS_OPEN=true.\n\nNote: the spec's GET /api/v1/orders/{userId} is GET /api/v1/users/{userId}/orders here (both ids are UUIDs, so the two spec routes can't be told apart). The spec's example symbol AAPL is APXL here (instruments are fictional).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "tokenExpiresAt",
+      "value": "0"
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "accountId",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const isLogin = pm.request.url.getPath().endsWith(\"/auth/login\");",
+          "const expiresAt = Number(pm.collectionVariables.get(\"tokenExpiresAt\") || 0);",
+          "if (!isLogin && (!pm.collectionVariables.get(\"accessToken\") || Date.now() > expiresAt - 60000)) {",
+          "    pm.sendRequest({",
+          "        url: pm.variables.get(\"baseUrl\") + \"/api/v1/auth/login\",",
+          "        method: \"POST\",",
+          "        header: { \"Content-Type\": \"application/json\" },",
+          "        body: { mode: \"raw\", raw: JSON.stringify({ username: pm.variables.get(\"username\"), password: pm.variables.get(\"password\") }) },",
+          "    }, (error, response) => {",
+          "        if (error || response.code !== 200) {",
+          "            console.error(\"Automatic login failed\", error || response.text());",
+          "            return;",
+          "        }",
+          "        const data = response.json().data;",
+          "        pm.collectionVariables.set(\"accessToken\", data.accessToken);",
+          "        pm.collectionVariables.set(\"tokenExpiresAt\", Date.now() + data.expiresIn * 1000);",
+          "        pm.collectionVariables.set(\"userId\", data.userId);",
+          "        pm.collectionVariables.set(\"accountId\", data.accountId);",
+          "    });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if ((pm.response.headers.get(\"Content-Type\") || \"\").includes(\"json\") && !pm.request.url.getPath().startsWith(\"/health\")) {",
+          "    pm.test(\"Response uses the envelope\", () => {",
+          "        const body = pm.response.json();",
+          "        pm.expect(body).to.have.all.keys(\"success\", \"data\", \"errors\");",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Seeded users: trader1–trader3 (cash accounts), trader4–trader5 (margin accounts). Password: Password123!",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with a bearer token\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.tokenType).to.equal(\"Bearer\");",
+                  "    pm.expect(data.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "    pm.collectionVariables.set(\"accessToken\", data.accessToken);",
+                  "    pm.collectionVariables.set(\"tokenExpiresAt\", Date.now() + data.expiresIn * 1000);",
+                  "    pm.collectionVariables.set(\"userId\", data.userId);",
+                  "    pm.collectionVariables.set(\"accountId\", data.accountId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with a wrong password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 INVALID_CREDENTIALS\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"INVALID_CREDENTIALS\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with my profile\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.userId).to.equal(pm.collectionVariables.get(\"userId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Market data",
+      "item": [
+        {
+          "name": "Snapshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/market/snapshot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "snapshot"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with 12 instruments\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.instruments).to.have.lengthOf(12);",
+                  "    pm.expect(data.marketOpen).to.be.a(\"boolean\");",
+                  "    const apxl = data.instruments.find(i => i.symbol === \"APXL\");",
+                  "    pm.expect(apxl.price).to.be.above(0);",
+                  "    pm.collectionVariables.set(\"apxlPrice\", apxl.price);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Instruments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/market/instruments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "instruments"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with volatility profiles\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.lengthOf(12);",
+                  "    pm.expect(data.find(i => i.symbol === \"CRYP\").volatility).to.equal(\"EXTREME\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Price history (1-minute candles)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/market/instruments/APXL/price-history?interval=1m&limit=60",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "instruments",
+                "APXL",
+                "price-history"
+              ],
+              "query": [
+                {
+                  "key": "interval",
+                  "value": "1m"
+                },
+                {
+                  "key": "limit",
+                  "value": "60"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with up to 60 candles, oldest first\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const candles = pm.response.json().data.candles;",
+                  "    pm.expect(candles.length).to.be.within(1, 60);",
+                  "    pm.expect(new Date(candles[0].time) <= new Date(candles[candles.length - 1].time)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Price history (daily candles)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/market/instruments/APXL/price-history?interval=1d",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "instruments",
+                "APXL",
+                "price-history"
+              ],
+              "query": [
+                {
+                  "key": "interval",
+                  "value": "1d"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with daily candles\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.interval).to.equal(\"1d\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order book",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/market/instruments/APXL/orderbook?depth=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "instruments",
+                "APXL",
+                "orderbook"
+              ],
+              "query": [
+                {
+                  "key": "depth",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with 5 levels per side, bids below asks\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.bids).to.have.lengthOf(5);",
+                  "    pm.expect(data.asks).to.have.lengthOf(5);",
+                  "    pm.expect(data.bids[0].price).to.be.below(data.asks[0].price);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Orders (market must be open)",
+      "item": [
+        {
+          "name": "Market buy (the spec's example)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"DAY\",\n  \"limitPrice\": null,\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"MARKET\",\n  \"side\": \"BUY\",\n  \"quantity\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idempotencyKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 FILLED with execution details\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.equal(\"FILLED\");",
+                  "    pm.expect(data.executedQuantity).to.equal(10);",
+                  "    pm.expect(data.executedPrice).to.be.above(0);",
+                  "    pm.expect(data.commission).to.equal(1);",
+                  "    pm.collectionVariables.set(\"marketOrderId\", data.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend with the same Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"DAY\",\n  \"limitPrice\": null,\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"MARKET\",\n  \"side\": \"BUY\",\n  \"quantity\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with the original order, not a new one\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.orderId).to.equal(pm.collectionVariables.get(\"marketOrderId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Limit buy (rests until the price drops)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"GTC\",\n  \"limitPrice\": 1,\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"LIMIT\",\n  \"side\": \"BUY\",\n  \"quantity\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 OPEN\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.status).to.equal(\"OPEN\");",
+                  "    pm.collectionVariables.set(\"limitOrderId\", pm.response.json().data.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get the limit order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{limitOrderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{limitOrderId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OPEN\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.status).to.equal(\"OPEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel the limit order",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{limitOrderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{limitOrderId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 CANCELLED\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.status).to.equal(\"CANCELLED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel it again (idempotent)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{limitOrderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{limitOrderId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, still CANCELLED\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.status).to.equal(\"CANCELLED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stop-loss sell (protects the shares)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"GTC\",\n  \"limitPrice\": null,\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"STOP_LOSS\",\n  \"side\": \"SELL\",\n  \"quantity\": 5,\n  \"triggerPrice\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 OPEN\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.orderType).to.equal(\"STOP_LOSS\");",
+                  "    pm.collectionVariables.set(\"stopLossOrderId\", pm.response.json().data.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Take-profit sell",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"GTC\",\n  \"limitPrice\": null,\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"TAKE_PROFIT\",\n  \"side\": \"SELL\",\n  \"quantity\": 5,\n  \"triggerPrice\": 999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 OPEN\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().data.orderType).to.equal(\"TAKE_PROFIT\");",
+                  "    pm.collectionVariables.set(\"takeProfitOrderId\", pm.response.json().data.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My open orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/orders?status=OPEN&pageSize=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "OPEN"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 including the stop-loss and take-profit\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const ids = pm.response.json().data.items.map(o => o.orderId);",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get(\"stopLossOrderId\"));",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get(\"takeProfitOrderId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel the stop-loss (clean up)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{stopLossOrderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{stopLossOrderId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 CANCELLED\", () => pm.expect(pm.response.json().data.status).to.equal(\"CANCELLED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel the take-profit (clean up)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{takeProfitOrderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{takeProfitOrderId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 CANCELLED\", () => pm.expect(pm.response.json().data.status).to.equal(\"CANCELLED\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Portfolio",
+      "item": [
+        {
+          "name": "Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolios",
+                "{{userId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with balances at live prices\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data).to.include.keys(\"cash\", \"equity\", \"buyingPower\", \"realizedPnl\", \"unrealizedPnl\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Positions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/{{userId}}/positions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolios",
+                "{{userId}}",
+                "positions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with an APXL position\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.map(p => p.symbol)).to.include(\"APXL\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Transactions (audit trail)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/{{userId}}/transactions?type=ORDER_FILLED&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolios",
+                "{{userId}}",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "ORDER_FILLED"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with ORDER_FILLED events\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const items = pm.response.json().data.items;",
+                  "    pm.expect(items.length).to.be.above(0);",
+                  "    items.forEach(e => pm.expect(e.type).to.equal(\"ORDER_FILLED\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Performance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/{{userId}}/performance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolios",
+                "{{userId}}",
+                "performance"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with an equity curve\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.tradeCount).to.be.above(0);",
+                  "    pm.expect(data.equityCurve.length).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Errors",
+      "item": [
+        {
+          "name": "400 VALIDATION_FAILED (side missing)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"MARKET\",\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_FAILED\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"VALIDATION_FAILED\");",
+                  "});",
+                  "pm.test(\"names the field\", () => pm.expect(pm.response.json().errors[0].field).to.equal(\"side\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 UNAUTHORIZED (no token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolios",
+                "{{userId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 UNAUTHORIZED\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"UNAUTHORIZED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 FORBIDDEN (someone else's portfolio)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/00000000-0000-0000-0000-000000000001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolios",
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 INSTRUMENT_NOT_FOUND (AAPL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"DAY\",\n  \"limitPrice\": null,\n  \"instrumentSymbol\": \"AAPL\",\n  \"orderType\": \"MARKET\",\n  \"side\": \"BUY\",\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 INSTRUMENT_NOT_FOUND\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"INSTRUMENT_NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 ORDER_NOT_FOUND",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ORDER_NOT_FOUND\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"ORDER_NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 NOT_FOUND (unknown URL)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/nothing-here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "nothing-here"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 NOT_FOUND\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"NOT_FOUND\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 ORDER_NOT_OPEN (cancel a filled order)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{marketOrderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{marketOrderId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 ORDER_NOT_OPEN\", () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"ORDER_NOT_OPEN\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 ORDER_TOO_SMALL (CRYP minimum is 10)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"DAY\",\n  \"limitPrice\": 1,\n  \"instrumentSymbol\": \"CRYP\",\n  \"orderType\": \"LIMIT\",\n  \"side\": \"BUY\",\n  \"quantity\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 ORDER_TOO_SMALL\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"ORDER_TOO_SMALL\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 RISK_LIMIT_EXCEEDED (order over $250k)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"DAY\",\n  \"limitPrice\": 150,\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"LIMIT\",\n  \"side\": \"BUY\",\n  \"quantity\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 RISK_LIMIT_EXCEEDED\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"RISK_LIMIT_EXCEEDED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 INSUFFICIENT_BUYING_POWER",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "description": "A cash account with $100k can't reserve $240k (within the $250k order limit).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"DAY\",\n  \"limitPrice\": 150,\n  \"instrumentSymbol\": \"APXL\",\n  \"orderType\": \"LIMIT\",\n  \"side\": \"BUY\",\n  \"quantity\": 1600\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 INSUFFICIENT_BUYING_POWER\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"INSUFFICIENT_BUYING_POWER\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 INSUFFICIENT_POSITION (selling shares you don't have)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"timeInForce\": \"DAY\",\n  \"limitPrice\": 1,\n  \"instrumentSymbol\": \"HELX\",\n  \"orderType\": \"LIMIT\",\n  \"side\": \"SELL\",\n  \"quantity\": 100000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 INSUFFICIENT_POSITION\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.equal(false);",
+                  "    pm.expect(body.data).to.equal(null);",
+                  "    pm.expect(body.errors[0].code).to.equal(\"INSUFFICIENT_POSITION\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Health",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 with each dependency\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().checks).to.have.all.keys(\"postgres\", \"redis\", \"rabbitmq\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

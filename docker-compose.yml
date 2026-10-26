@@ -1,0 +1,168 @@
+name: tradesim
+
+x-dotnet-env: &dotnet-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+  ConnectionStrings__Postgres: Host=postgres;Database=${POSTGRES_DB:-tradesim};Username=${POSTGRES_USER:-tradesim};Password=${POSTGRES_PASSWORD:-tradesim};Maximum Pool Size=60
+  ConnectionStrings__Redis: redis:6379
+  ConnectionStrings__RabbitMq: amqp://${RABBITMQ_USER:-test}:${RABBITMQ_PASSWORD:-test}@rabbitmq:5672/
+  Market__AlwaysOpen: ${MARKET_ALWAYS_OPEN:-false}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tradesim}
+      POSTGRES_USER: ${POSTGRES_USER:-tradesim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradesim}
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=200"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "96mb"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-test}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-test}
+    ports:
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.5.2
+    environment:
+      DASHBOARD__FRONTEND__AUTHMODE: Unsecured
+      DASHBOARD__OTLP__AUTHMODE: Unsecured
+      DASHBOARD__TELEMETRYLIMITS__MAXLOGCOUNT: 10000
+      DASHBOARD__TELEMETRYLIMITS__MAXTRACECOUNT: 10000
+      DASHBOARD__TELEMETRYLIMITS__MAXMETRICSCOUNT: 50000
+    ports:
+      - "18888:18888"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      <<: *dotnet-env
+      OTEL_SERVICE_NAME: worker
+      Seed__TraderPassword: ${SEED_TRADER_PASSWORD:-Password123!}
+      Seed__LoadTestUsers: ${SEED_LOADTEST_USERS:-false}
+      Seed__LoadTestPassword: ${SEED_LOADTEST_PASSWORD:-LoadTest123!}
+      MarketData__JumpChance: ${MARKET_JUMP_CHANCE:-0.00005}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      aspire-dashboard:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/tradesim-worker.healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  api:
+    build:
+      context: .
+      target: api
+    environment:
+      <<: *dotnet-env
+      OTEL_SERVICE_NAME: api
+      Jwt__Secret: ${JWT_SECRET:-local-demo-signing-key-change-me-0123456789abcdef}
+      RateLimiting__LoginPerMinute: ${LOGIN_RATE_LIMIT_PER_MINUTE:-5}
+      RateLimiting__RequestsPerSecond: ${RATE_LIMIT_PER_SECOND:-50}
+    depends_on:
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 384M
+
+  nginx:
+    image: nginx:1.28-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+
+  k6:
+    image: grafana/k6:1.8.1
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://nginx
+      VUS: ${LOAD_TEST_VUS:-1000}
+      DURATION: ${LOAD_TEST_DURATION:-5m}
+      LOADTEST_PASSWORD: ${SEED_LOADTEST_PASSWORD:-LoadTest123!}
+    volumes:
+      - ./load/k6:/scripts:ro
+      - ./load/results:/results
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
